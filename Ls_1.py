@@ -18,8 +18,7 @@
 import time
 import json
 from pathlib import Path
-import requests
-
+import requests #помогает взаимодействовать с веб-приложениями (передачей информации от пользователя к серверу и обратно)
 
 class Parse5ka:
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:85.0) Gecko/20100101 Firefox/85.0"}
@@ -30,7 +29,7 @@ class Parse5ka:
 
     def _get_response(self, url):
         while True:
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers) #создаем запрос, кот будет отправляться пока не получим правильный ответ без ошибки
             if response.status_code == 200:
                 return response
             time.sleep(0.5)
@@ -52,23 +51,40 @@ class Parse5ka:
         file_path.write_text(json.dumps(data, ensure_ascii=False))
 
 
-class Categories(Parse5ka):
+class CategoriesParser(Parse5ka):
     def __init__(self, categories_url, *args, **kwargs):
         self.categories_url = categories_url
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs) #чтобы не прописывать родительские атрибуты
 
-    def _get_categories_response(self):
-        pass
+    def _get_categories(self): #получаем список категорий
+        response = self._get_response(self.categories_url)
+        data = response.json()
+        return data
+
+    def run(self):
+        for category in self._get_categories():
+            category["products"] = []
+            params = f"?categories={category['parent_group_code']}"
+            url = f"{self.start_url}{params}"
+
+            category["products"].extend(list(self._parse(url)))
+            file_name = f"{category['parent_group_code']}.json"
+            cat_path = self.save_path.joinpath(file_name)
+            self._save(category, cat_path)
 
 
+def get_save_path(dir_name):
+    save_path = Path(__file__).parent.joinpath(dir_name)
+    if not save_path.exists():
+        save_path.mkdir()
+    return save_path
 
 
 if __name__ == "__main__":
     url = "https://5ka.ru/api/v2/special_offers/"
-    categories_url = "https://5ka.ru/api/v2/categories/"
-    save_path = Path(__file__).parent.joinpath("products")
-    if not save_path.exists():
-        save_path.mkdir()
-
-    parser = Parse5ka(url, save_path)
-    parser.run()
+    cat_url = "https://5ka.ru/api/v2/categories/"
+    save_path_products = get_save_path("products")
+    save_path_categories = get_save_path("categories")
+    parser_products = Parse5ka(url, save_path_products)
+    cat_parser = CategoriesParser(cat_url, url, save_path_categories)
+    cat_parser.run()
